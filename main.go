@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -69,18 +71,38 @@ func requestHandler(ctx context.Context, req events.APIGatewayProxyRequest) (eve
 	return responseBuilder(201, `{"msg": "Log successfully added!"}`), nil
 }
 
+func devToLambdaHandler(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+
+	queryParamsMap := make(map[string]string)
+	queryParams := r.URL.Query()
+	for key, v := range queryParams {
+		queryParamsMap[key] = v[0]
+	}
+
+	lambdaReq := events.APIGatewayProxyRequest{
+		HTTPMethod:            r.Method,
+		QueryStringParameters: queryParamsMap,
+		Body:                  string(body),
+	}
+
+	res, err := requestHandler(context.Background(), lambdaReq)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	w.WriteHeader(res.StatusCode)
+	w.Write([]byte(res.Body))
+}
+
 func main() {
-	lambda.Start(requestHandler)
-
-	// For local testing
-	// req := events.APIGatewayProxyRequest{
-	// 	Body: `{"name": "John Doe", "others": { "age": 26, "fruits": ["lemon", "apple"], "loc": null } }`,
-	// }
-
-	// resp, err := requestHandler(context.Background(), req)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// println(resp.Body)
+	environment := os.Getenv("ENVIRONMENT")
+	if environment == "dev" {
+		http.HandleFunc("/lambda", devToLambdaHandler)
+		http.ListenAndServe(":8080", nil)
+	} else {
+		lambda.Start(requestHandler)
+	}
 }
