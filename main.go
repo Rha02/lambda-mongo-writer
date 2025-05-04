@@ -80,7 +80,13 @@ func devToLambdaHandler(w http.ResponseWriter, r *http.Request) {
 		queryParamsMap[key] = v[0]
 	}
 
+	headers := make(map[string]string)
+	for key, v := range r.Header {
+		headers[key] = v[0]
+	}
+
 	lambdaReq := events.APIGatewayProxyRequest{
+		Headers:               headers,
 		HTTPMethod:            r.Method,
 		QueryStringParameters: queryParamsMap,
 		Body:                  string(body),
